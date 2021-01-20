@@ -3,15 +3,17 @@
 #include <vector>
 #include <iostream>
 #include <sstream>
+#include <map>
 #include "codetracker.h"
 
 using namespace Iguana;
 
-Node::Node(int lin, int col, std::string name) {
+Node::Node(int lin, int col, std::string name)
+    : mValue("")
+{
     mLin = lin;
     mCol = col;
     mName = name;
-    mValue = "";
 }
 
 void Node::setNodes(std::vector<Node> nodes) {
@@ -20,6 +22,22 @@ void Node::setNodes(std::vector<Node> nodes) {
 
 void Node::setValue(std::string value) {
     mValue = value;
+}
+
+std::string Node::display() {
+    if (mValue != "") {
+        return mName + "(" + mValue + ")";
+    }
+
+    std::string res = mName + "(";
+
+    for (Node &n : mNodes) {
+        res += n.display() + ",";
+    }
+
+    res += ")";
+
+    return res;
 }
 
 ParseResult::ParseResult() {
@@ -39,12 +57,19 @@ ParseResult* ParseResult::failure(const std::string& msg) {
     return this;
 }
 
-Parser::Parser() {
-    mToParse = "";
-    mName = "";
-    mParseFn = nullptr;
-    mType = PTypes::Unassigned;
+void ParseResult::displayResult() {
+    if (mError) {
+        std::cout << mMsg << std::endl;
+        return;
+    }
+
+    std::cout << mNode->display() << std::endl;
 }
+
+Parser::Parser()
+    : mToParse(""), mName(""),
+    mParseFn(nullptr), mType(PTypes::Unassigned)
+{}
 
 std::string Parser::getError(const std::string& expected, int lin, int col) {
     std::ostringstream err;
@@ -84,7 +109,7 @@ ParseResult* Parser::parseAnd(CodeTracker* trckr) {
     for (Parser* p : mParsers) {
         int startLin = trckr->mLin;
         int startCol = trckr->mCol;
-        ParseResult* pres = (p->*mParseFn)(trckr);
+        ParseResult* pres = (p->*p->mParseFn)(trckr);
         if (pres->mError) {
             return res->failure(this->getError(p->mName, startLin, startCol));
         }
@@ -109,7 +134,7 @@ ParseResult* Parser::parseOr(CodeTracker* trckr) {
 
     for (Parser* p : mParsers) {
         CodeTracker* cloneTrckr = trckr->copy();
-        ParseResult* pres = (p->*mParseFn)(cloneTrckr);
+        ParseResult* pres = (p->*p->mParseFn)(cloneTrckr);
 
         if (pres->mError) {
             delete pres;
@@ -156,10 +181,11 @@ ParseResult* Parser::parseMany(CodeTracker* trckr) {
     int lin = trckr->mLin;
     int col = trckr->mCol;
 
+
     Parser* p = mParsers[0];
     while (true) {
         CodeTracker* trckrClone = trckr->copy();
-        ParseResult* pres = (p->*mParseFn)(trckrClone);
+        ParseResult* pres = (p->*p->mParseFn)(trckrClone);
 
         if (pres->mError)
             break;
@@ -184,7 +210,110 @@ ParseResult* Parser::parseMany(CodeTracker* trckr) {
 ParseResult* Parser::parseClosure(CodeTracker* trckr) {
     ParseResult* res = new ParseResult();
 
-    return res;
+    trckr->skipWhitespace();
+    int lin = trckr->mLin;
+    int col = trckr->mCol;
+
+    ParseResult* pres = parseMany(trckr);
+
+    Node* node = new Node(lin, col, mName);
+
+    if (!pres->mError)
+        node->setNodes(std::vector<Node>{ *pres->mNode });
+
+    delete pres;
+    return res->success(node);;
+}
+
+ParseResult* Parser::parseAlphabetic(CodeTracker* trckr) {
+    ParseResult* res = new ParseResult();
+
+    trckr->skipWhitespace();
+    int lin = trckr->mLin;
+    int col = trckr->mCol;
+
+    std::string resstr = trckr->parseKey(std::isalpha);
+
+    if (resstr == "") {
+        return res->failure(getError("alphabetic character", lin, col));
+    }
+
+    Node* node = new Node(lin, col, mName);
+    node->setValue(resstr);
+
+    return res->success(node);
+}
+
+ParseResult* Parser::parseAlphanumeric(CodeTracker* trckr) {
+    ParseResult* res = new ParseResult();
+
+    trckr->skipWhitespace();
+    int lin = trckr->mLin;
+    int col = trckr->mCol;
+
+    std::string resstr = trckr->parseKey(std::isalnum);
+
+    if (resstr == "") {
+        return res->failure(getError("alphanumeric character", lin, col));
+    }
+
+    Node* node = new Node(lin, col, mName);
+    node->setValue(resstr);
+
+    return res->success(node);
+}
+
+ParseResult* Parser::parseDigit(CodeTracker* trckr) {
+    ParseResult* res = new ParseResult();
+
+    trckr->skipWhitespace();
+    int lin = trckr->mLin;
+    int col = trckr->mCol;
+
+    std::string resstr = trckr->parseKey(std::isdigit);
+
+    if (resstr == "") {
+        return res->failure(getError("digit", lin, col));
+    }
+
+    Node* node = new Node(lin, col, mName);
+    node->setValue(resstr);
+
+    return res->success(node);
+}
+
+ParseResult* Parser::parseCustom(CodeTracker* trckr) {
+    ParseResult* res = new ParseResult();
+
+    trckr->skipWhitespace();
+    int lin = trckr->mLin;
+    int col = trckr->mCol;
+
+    std::string resstr = trckr->parseCustomSymbols(mToParse);
+
+    if (resstr == "") {
+        return res->failure(getError("one of " + mToParse, lin, col));
+    }
+
+    Node* node = new Node(lin, col, mName);
+    node->setValue(resstr);
+
+    return res->success(node);
+}
+
+ParseResult* Parser::parseEOF(CodeTracker* trckr) {
+    ParseResult* res = new ParseResult();
+    trckr->skipWhitespace();
+
+    int lin = trckr->mLin;
+    int col = trckr->mCol;
+
+    if (!trckr->isEOF()) 
+        return res->failure(getError("end of file", lin, col));
+
+    Node* node = new Node(lin, col, mName);
+
+    return res->success(node);
 }
 
 Parser* Parser::String(const std::string& toParse, const std::string& name) {
@@ -230,4 +359,140 @@ Parser* Parser::Closure(Parser* toParse, const std::string& name) {
     p->mType = PTypes::Closure;
     p->mParseFn = &Parser::parseClosure;
     return p;
+}
+
+Parser* Parser::Alphabetic(const std::string& name) {
+    Parser* p = new Parser();
+    p->mName = name;
+    p->mType = PTypes::Alphabetic;
+    p->mParseFn = &Parser::parseAlphabetic;
+    return p;
+}
+
+Parser* Parser::Alphanumeric(const std::string& name) {
+    Parser* p = new Parser();
+    p->mName = name;
+    p->mType = PTypes::Alphanumeric;
+    p->mParseFn = &Parser::parseAlphanumeric;
+    return p;
+}
+
+Parser* Parser::Digit(const std::string& name) {
+    Parser* p = new Parser();
+    p->mName = name;
+    p->mType = PTypes::Digit;
+    p->mParseFn = &Parser::parseDigit;
+    return p;
+}
+
+Parser* Parser::Custom(const std::string& name, const std::string& toParse) {
+    Parser* p = new Parser();
+    p->mName = name;
+    p->mToParse = toParse;
+    p->mType = PTypes::Custom;
+    p->mParseFn = &Parser::parseCustom;
+    return p;
+}
+
+Parser* Parser::EndOfFile(const std::string& name) {
+    Parser* p = new Parser();
+    p->mName = name;
+    p->mType = PTypes::EndOfFile;
+    p->mParseFn = &Parser::parseEOF;
+    return p;
+}
+
+void Parser::assign(Parser* other) {
+    if (mType != PTypes::Unassigned)
+        return;
+
+    mParsers = other->mParsers;
+    mToParse = other->mToParse;
+    mName = other->mName;
+    mParseFn = other->mParseFn;
+    mType = other->mType;
+    delete other;
+}
+
+
+
+GlobalParserTable::~GlobalParserTable() {
+    for (std::pair<std::string, Parser*> const &p : mParsers)
+        delete p.second;
+}
+
+Parser* GlobalParserTable::String(const std::string& name, const std::string& toParse) {
+    Parser* p = Parser::String(toParse, name);
+    mParsers.insert(std::pair<std::string, Parser*>(name, p));
+    return p;
+}
+
+Parser* GlobalParserTable::And(const std::string& name, std::vector<Parser*> parsers) {
+    Parser* p = Parser::And(parsers, name);
+    mParsers.insert(std::pair<std::string, Parser*>(name, p));
+    return p;
+}
+
+Parser* GlobalParserTable::Or(const std::string& name, std::vector<Parser*> parsers) {
+    Parser* p = Parser::Or(parsers, name);
+    mParsers.insert(std::pair<std::string, Parser*>(name, p));
+    return p;
+}
+
+Parser* GlobalParserTable::Many(const std::string& name, Parser* toParse) {
+    Parser* p = Parser::Many(toParse, name);
+    mParsers.insert(std::pair<std::string, Parser*>(name, p));
+    return p;
+}
+
+Parser* GlobalParserTable::Closure(const std::string& name, Parser* toParse) {
+    Parser* p = Parser::Closure(toParse, name);
+    mParsers.insert(std::pair<std::string, Parser*>(name, p));
+    return p;
+}
+
+Parser* GlobalParserTable::Alphabetic(const std::string& name) {
+    Parser* p = Parser::Alphabetic(name);
+    mParsers.insert(std::pair<std::string, Parser*>(name, p));
+    return p;
+}
+
+Parser* GlobalParserTable::Alphanumeric(const std::string& name) {
+    Parser* p = Parser::Alphanumeric(name);
+    mParsers.insert(std::pair<std::string, Parser*>(name, p));
+    return p;
+}
+
+Parser* GlobalParserTable::Digit(const std::string& name) {
+    Parser* p = Parser::Digit(name);
+    mParsers.insert(std::pair<std::string, Parser*>(name, p));
+    return p;
+}
+
+Parser* GlobalParserTable::Custom(const std::string& name, const std::string& toParse) {
+    Parser* p = Parser::Custom(name, toParse);
+    mParsers.insert(std::pair<std::string, Parser*>(name, p));
+    return p;
+}
+
+Parser* GlobalParserTable::EndOfFile(const std::string& name) {
+    Parser* p = Parser::EndOfFile(name);
+    mParsers.insert(std::pair<std::string, Parser*>(name, p));
+    return p;
+}
+
+ParseResult* GlobalParserTable::parse(Parser* mainP, CodeTracker* trckr) {
+    for (std::pair<std::string, Parser*> const &p : mParsers) {
+        if (p.second->mType == PTypes::Unassigned) {
+            ParseResult* res = new ParseResult();
+            return res->failure(p.second->mName + " Parser is unassigned");
+        }
+    }
+
+    return mainP->parse(trckr);
+}
+
+void GlobalParserTable::assign(Parser* to, Parser* from) {
+    mParsers.erase(from->mName);
+    to->assign(from);
 }
