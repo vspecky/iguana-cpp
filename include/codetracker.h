@@ -11,11 +11,14 @@ public:
     int mLin;
     int mCol;
 
-    CodeTracker(std::string* code);
+    CodeTracker(std::string*);
     CodeTracker* copy();
     void skipWhitespace();
     bool matchString(std::string const& toMatch);
     void consume(std::string const& toConsume);
+    std::string parseKey(int (*)(int));
+    std::string parseCustomSymbols(std::string&);
+    bool isEOF();
     void display();
     void copyInfo(CodeTracker*);
 };

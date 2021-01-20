@@ -50,6 +50,42 @@ void CodeTracker::consume(std::string const& toConsume) {
     mCol += len;
 }
 
+bool CodeTracker::isEOF() {
+    this->skipWhitespace();
+
+    return mIdx >= mCode->length();
+}
+
+std::string CodeTracker::parseKey(int (*key)(int)) {
+    this->skipWhitespace();
+    std::string res = "";
+
+    int len = mCode->length();
+
+    while (mIdx < len && key(mCode->at(mIdx)) != 0) {
+        res += mCode->at(mIdx);
+        mIdx++;
+        mCol++;
+    }
+
+    return res;
+}
+
+std::string CodeTracker::parseCustomSymbols(std::string& toParse) {
+    this->skipWhitespace();
+    std::string res = "";
+
+    int len = mCode->length();
+
+    while (mIdx < len && toParse.find(mCode->at(mIdx)) != std::string::npos) {
+        res += mCode->at(mIdx);
+        mIdx++;
+        mCol++;
+    }
+
+    return res;
+}
+
 void CodeTracker::display() {
     std::cout << "Index " << mIdx << std::endl;
     std::cout << "Col   " << mCol << std::endl;
