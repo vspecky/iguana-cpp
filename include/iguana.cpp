@@ -8,7 +8,7 @@
 
 using namespace Iguana;
 
-Node::Node(int lin, int col, std::string name)
+Node::Node(int lin, int col, const std::string& name)
     : mValue("")
 {
     mLin = lin;
@@ -24,20 +24,51 @@ void Node::setValue(std::string value) {
     mValue = value;
 }
 
-std::string Node::display() {
-    if (mValue != "") {
-        return mName + "(" + mValue + ")";
+void Node::display(IndentTracker* trckr) {
+    std::string indent1 = trckr->getIndentStr();
+
+    std::cout << indent1 << "{" << std::endl;
+
+    trckr->increment();
+
+    std::string indent2 = trckr->getIndentStr();
+
+    std::cout << indent2 << "Name: " << this->mName << std::endl;
+    std::cout << indent2 << "Pos: " << "(" << mLin << "," << mCol << ")" << std::endl;
+
+    if (mValue != "") 
+        std::cout << indent2  << "Value: " << mValue << std::endl;
+
+    if (mNodes.size() != 0) {
+        std::cout << indent2 << "Nodes :-" << std::endl;
+        for (Node &n : mNodes) {
+            n.display(trckr);
+        }
     }
 
-    std::string res = mName + "(";
+    trckr->decrement();
+    std::string indent3 = trckr->getIndentStr();
+    std::cout << indent3 << "}" << std::endl;
+}
 
-    for (Node &n : mNodes) {
-        res += n.display() + ",";
-    }
+IndentTracker::IndentTracker(int stepSize) {
+    mStepSize = stepSize;
+    mCurrentMag = 0;
+}
 
-    res += ")";
+void IndentTracker::increment() {
+    mCurrentMag += mStepSize;
+}
 
-    return res;
+void IndentTracker::decrement() {
+    if (mCurrentMag == 0)
+        return;
+
+    mCurrentMag -= mStepSize;
+}
+
+std::string IndentTracker::getIndentStr() {
+    return std::string(mCurrentMag, ' ');
 }
 
 ParseResult::ParseResult() {
@@ -63,12 +94,12 @@ void ParseResult::displayResult() {
         return;
     }
 
-    std::cout << mNode->display() << std::endl;
 }
 
 Parser::Parser()
     : mToParse(""), mName(""),
-    mParseFn(nullptr), mType(PTypes::Unassigned)
+    mParseFn(nullptr), mType(PTypes::Unassigned),
+    mLowerAmt(0), mUpperAmt(0)
 {}
 
 std::string Parser::getError(const std::string& expected, int lin, int col) {
@@ -89,7 +120,8 @@ ParseResult* Parser::parseString(CodeTracker* trckr) {
     int col = trckr->mCol;
 
     if (trckr->matchString(mToParse)) {
-        Node* pNode = new Node(trckr->mLin, trckr->mCol, mName);
+        std::string nodeName = mName;
+        Node* pNode = new Node(trckr->mLin, trckr->mCol, nodeName);
         pNode->setValue(mToParse);
         trckr->consume(mToParse);
         return res->success(pNode);
@@ -117,7 +149,9 @@ ParseResult* Parser::parseAnd(CodeTracker* trckr) {
         delete pres;
     }
 
-    Node* pNode = new Node(lin, col, mName);
+    std::string nodeName = mName;
+
+    Node* pNode = new Node(lin, col, nodeName);
     pNode->setNodes(nodes);
 
     return res->success(pNode);
@@ -167,7 +201,8 @@ ParseResult* Parser::parseOr(CodeTracker* trckr) {
         return res->failure(this->getError(expected, lin, col));
     }
 
-    Node* resNode = new Node(lin, col, mName);
+    std::string nodeName = mName;
+    Node* resNode = new Node(lin, col, nodeName);
     resNode->setNodes(std::vector<Node>{ *node });
 
     return res->success(resNode);
@@ -201,7 +236,8 @@ ParseResult* Parser::parseMany(CodeTracker* trckr) {
         return res->failure(this->getError(expected, lin, col));
     }
 
-    Node* resNode = new Node(lin, col, mName);
+    std::string nodeName = mName;
+    Node* resNode = new Node(lin, col, nodeName);
     resNode->setNodes(nodes);
 
     return res->success(resNode);
@@ -216,7 +252,8 @@ ParseResult* Parser::parseClosure(CodeTracker* trckr) {
 
     ParseResult* pres = parseMany(trckr);
 
-    Node* node = new Node(lin, col, mName);
+    std::string nodeName = mName;
+    Node* node = new Node(lin, col, nodeName);
 
     if (!pres->mError)
         node->setNodes(std::vector<Node>{ *pres->mNode });
@@ -238,7 +275,8 @@ ParseResult* Parser::parseAlphabetic(CodeTracker* trckr) {
         return res->failure(getError("alphabetic character", lin, col));
     }
 
-    Node* node = new Node(lin, col, mName);
+    std::string nodeName = mName;
+    Node* node = new Node(lin, col, nodeName);
     node->setValue(resstr);
 
     return res->success(node);
@@ -257,7 +295,8 @@ ParseResult* Parser::parseAlphanumeric(CodeTracker* trckr) {
         return res->failure(getError("alphanumeric character", lin, col));
     }
 
-    Node* node = new Node(lin, col, mName);
+    std::string nodeName = mName;
+    Node* node = new Node(lin, col, nodeName);
     node->setValue(resstr);
 
     return res->success(node);
@@ -276,7 +315,8 @@ ParseResult* Parser::parseDigit(CodeTracker* trckr) {
         return res->failure(getError("digit", lin, col));
     }
 
-    Node* node = new Node(lin, col, mName);
+    std::string nodeName = mName;
+    Node* node = new Node(lin, col, nodeName);
     node->setValue(resstr);
 
     return res->success(node);
@@ -295,7 +335,8 @@ ParseResult* Parser::parseCustom(CodeTracker* trckr) {
         return res->failure(getError("one of " + mToParse, lin, col));
     }
 
-    Node* node = new Node(lin, col, mName);
+    std::string nodeName = mName;
+    Node* node = new Node(lin, col, nodeName);
     node->setValue(resstr);
 
     return res->success(node);
@@ -311,9 +352,226 @@ ParseResult* Parser::parseEOF(CodeTracker* trckr) {
     if (!trckr->isEOF()) 
         return res->failure(getError("end of file", lin, col));
 
-    Node* node = new Node(lin, col, mName);
+    std::string nodeName = mName;
+    Node* node = new Node(lin, col, nodeName);
 
     return res->success(node);
+}
+
+ParseResult* Parser::parseUntil(CodeTracker* trckr) {
+    ParseResult* res = new ParseResult();
+    trckr->skipWhitespace();
+
+    int lin = trckr->mLin;
+    int col = trckr->mCol;
+
+    std::vector<Node> nodes;
+
+    Parser* toP = mParsers[0];
+    Parser* until = mParsers[0];
+
+    int indivLin = lin;
+    int indivCol = col;
+
+    while (true) {
+        CodeTracker* trckrClone = trckr->copy();
+        ParseResult* ures = (until->*until->mParseFn)(trckrClone);
+
+        bool isError = ures->mError;
+
+        delete trckrClone;
+        delete ures->mNode;
+        delete ures;
+
+        if (!isError) 
+            break;
+
+        trckr->skipWhitespace();
+        indivLin = trckr->mLin;
+        indivCol = trckr->mCol;
+        
+        ParseResult* pres = (toP->*toP->mParseFn)(trckr);
+
+        if (pres->mError) {
+            delete pres;
+            return res->failure(getError(toP->mName, lin, col));
+        }
+
+        nodes.push_back(*pres->mNode);
+        delete pres;
+    }
+
+    Node* resNode = new Node(lin, col, mName);
+
+    return res->success(resNode);
+}
+
+ParseResult* Parser::parseRegex(CodeTracker* trckr) {
+    ParseResult* res = new ParseResult();
+    trckr->skipWhitespace();
+
+    int lin = trckr->mLin;
+    int col = trckr->mCol;
+
+    std::string resstring = trckr->parseRegex(mToParse);
+
+    if (resstring == "") {
+        return res->failure(getError(mName, lin, col));
+    }
+
+    Node* resNode = new Node(lin, col, mName);
+    resNode->setValue(resstring);
+
+    return res->success(resNode);
+}
+
+ParseResult* Parser::parseNumber(CodeTracker* trckr) {
+    ParseResult* res = new ParseResult();
+
+    std::vector<Node> nodes;
+    trckr->skipWhitespace();
+    int lin = trckr->mLin;
+    int col = trckr->mCol;
+
+    Parser* toP = mParsers[0];
+
+    for (int i = 0; i < mLowerAmt; i++) {
+        ParseResult* pres = (toP->*toP->mParseFn)(trckr);
+
+        if (pres->mError) {
+            delete pres;
+            return res->failure(getError(std::to_string(mLowerAmt) + " of " + mName, lin, col));
+        }
+
+        nodes.push_back(*pres->mNode);
+        delete pres;
+    }
+
+    Node* resNode = new Node(lin, col, mName);
+    resNode->setNodes(nodes);
+
+    return res->success(resNode);
+}
+
+ParseResult* Parser::parseRange(CodeTracker* trckr) {
+    ParseResult* res = new ParseResult();
+
+    std::vector<Node> nodes;
+    trckr->skipWhitespace();
+    int lin = trckr->mLin;
+    int col = trckr->mCol;
+
+    Parser* toP = mParsers[0];
+
+    for (int i = 0; i < mUpperAmt; i++) {
+        CodeTracker* trckrClone = trckr->copy();
+        ParseResult* pres = (toP->*toP->mParseFn)(trckrClone);
+
+        if (pres->mError) {
+            delete trckrClone;
+            delete pres;
+            break;
+        }
+
+        nodes.push_back(*pres->mNode);
+        trckr->copyInfo(trckrClone);
+        delete trckrClone;
+        delete pres;
+    }
+
+    if (nodes.size() >= mLowerAmt) {
+        Node* resNode = new Node(lin, col, mName);
+        resNode->setNodes(nodes);
+        return res->success(resNode);
+    }
+
+    std::string expected = std::to_string(mLowerAmt)
+        + "-"
+        + std::to_string(mUpperAmt)
+        + " of "
+        + mName;
+
+    return res->failure(getError(expected, lin, col));
+}
+
+ParseResult* Parser::parseMoreThan(CodeTracker* trckr) {
+    ParseResult* res = new ParseResult();
+
+    trckr->skipWhitespace();
+    std::vector<Node> nodes;
+    int lin = trckr->mLin;
+    int col = trckr->mCol;
+
+    Parser* toP = mParsers[0];
+
+    while (true) {
+        CodeTracker* trckrClone = trckr->copy();
+        ParseResult* pres = (toP->*toP->mParseFn)(trckrClone);
+
+        if (pres->mError) {
+            delete trckrClone;
+            delete pres;
+            break;
+        }
+
+        nodes.push_back(*pres->mNode);
+        trckr->copyInfo(trckrClone);
+        delete trckrClone;
+        delete pres;
+    }
+
+    if (nodes.size() > mLowerAmt) {
+        Node* resNode = new Node(lin, col, mName);
+        resNode->setNodes(nodes);
+        return res->success(resNode);
+    }
+
+    std::string expected = "More than "
+        + std::to_string(mLowerAmt)
+        + " of "
+        + mName;
+
+    return res->failure(getError(expected, lin, col));
+}
+
+ParseResult* Parser::parseLessThan(CodeTracker* trckr) {
+    ParseResult* res = new ParseResult();
+
+    trckr->skipWhitespace();
+    std::vector<Node> nodes;
+    int lin = trckr->mLin;
+    int col = trckr->mCol;
+
+    Parser* toP = mParsers[0];
+
+    for (int i = 1; i < mUpperAmt; i++) {
+        CodeTracker* trckrClone = trckr->copy();
+        ParseResult* pres = (toP->*toP->mParseFn)(trckr);
+
+        if (pres->mError) {
+            delete trckrClone;
+            delete pres;
+            break;
+        }
+
+        nodes.push_back(*pres->mNode);
+        trckr->copyInfo(trckrClone);
+        delete trckrClone;
+        delete pres;
+    }
+
+    if (nodes.size() > 0) {
+        Node* resNode = new Node(lin, col, mName);
+        resNode->setNodes(nodes);
+        return res->success(resNode);
+    }
+
+    std::string expected = "less than "
+        + std::to_string(mUpperAmt)
+        + " of "
+        + mName;
+
+    return res->failure(getError(expected, lin, col));
 }
 
 Parser* Parser::String(const std::string& toParse, const std::string& name) {
@@ -394,11 +652,71 @@ Parser* Parser::Custom(const std::string& name, const std::string& toParse) {
     return p;
 }
 
+Parser* Parser::Until(const std::string& name, Parser* toParse, Parser* until) {
+    Parser* p = new Parser();
+    p->mName = name;
+    p->mParsers.push_back(toParse);
+    p->mParsers.push_back(until);
+    p->mType = PTypes::Until;
+    p->mParseFn = &Parser::parseUntil;
+    return p;
+}
+
 Parser* Parser::EndOfFile(const std::string& name) {
     Parser* p = new Parser();
     p->mName = name;
     p->mType = PTypes::EndOfFile;
     p->mParseFn = &Parser::parseEOF;
+    return p;
+}
+
+Parser* Parser::Regex(const std::string& name, const std::string& regex) {
+    Parser* p = new Parser();
+    p->mName = name;
+    p->mType = PTypes::Regex;
+    p->mToParse = regex;
+    p->mParseFn = &Parser::parseRegex;
+    return p;
+}
+
+Parser* Parser::Number(const std::string& name, Parser* toParse, unsigned int amt) {
+    Parser* p = new Parser();
+    p->mName = name;
+    p->mType = PTypes::Number;
+    p->mLowerAmt = amt;
+    p->mParsers.push_back(toParse);
+    p->mParseFn = &Parser::parseNumber;
+    return p;
+}
+
+Parser* Parser::Range(const std::string& name, Parser* toParse, unsigned int l, unsigned int h) {
+    Parser* p = new Parser();
+    p->mName = name;
+    p->mType = PTypes::Range;
+    p->mLowerAmt = l;
+    p->mUpperAmt = h;
+    p->mParsers.push_back(toParse);
+    p->mParseFn = &Parser::parseRange;
+    return p;
+}
+
+Parser* Parser::MoreThan(const std::string& name, Parser* toParse, unsigned int l) {
+    Parser* p = new Parser();
+    p->mName = name;
+    p->mType = PTypes::MoreThan;
+    p->mParsers.push_back(toParse);
+    p->mParseFn = &Parser::parseMoreThan;
+    p->mLowerAmt = l;
+    return p;
+}
+
+Parser* Parser::LessThan(const std::string& name, Parser* toParse, unsigned int h) {
+    Parser* p = new Parser();
+    p->mName = name;
+    p->mType = PTypes::LessThan;
+    p->mParsers.push_back(toParse);
+    p->mParseFn = &Parser::parseLessThan;
+    p->mUpperAmt = h;
     return p;
 }
 
@@ -423,7 +741,11 @@ GlobalParserTable::~GlobalParserTable() {
 
 Parser* GlobalParserTable::String(const std::string& name, const std::string& toParse) {
     Parser* p = Parser::String(toParse, name);
-    mParsers.insert(std::pair<std::string, Parser*>(name, p));
+    if (name == "")
+        mAnonParsers.push_back(p);
+    else
+        mParsers.insert(std::pair<std::string, Parser*>(name, p));
+
     return p;
 }
 
@@ -481,6 +803,36 @@ Parser* GlobalParserTable::EndOfFile(const std::string& name) {
     return p;
 }
 
+Parser* GlobalParserTable::Regex(const std::string& name, const std::string& regex) {
+    Parser* p = Parser::Regex(name, regex);    
+    mParsers.insert(std::pair<std::string, Parser*>(name, p));
+    return p;
+}
+
+Parser* GlobalParserTable::Number(const std::string& name, Parser* toP, unsigned int num) {
+    Parser* p = Parser::Number(name, toP, num);
+    mParsers.insert(std::pair<std::string, Parser*>(name, p));
+    return p;
+}
+
+Parser* GlobalParserTable::Range(const std::string& name, Parser* toP, unsigned int l, unsigned int h) {
+    Parser* p = Parser::Range(name, toP, l, h);
+    mParsers.insert(std::pair<std::string, Parser*>(name, p));
+    return p;
+}
+
+Parser* GlobalParserTable::MoreThan(const std::string& name, Parser* toP, unsigned int l) {
+    Parser* p = Parser::MoreThan(name, toP, l);
+    mParsers.insert(std::pair<std::string, Parser*>(name, p));
+    return p;
+}
+
+Parser* GlobalParserTable::LessThan(const std::string& name, Parser* toP, unsigned int h) {
+    Parser* p = Parser::LessThan(name, toP, h);
+    mParsers.insert(std::pair<std::string, Parser*>(name, p));
+    return p;
+}
+
 ParseResult* GlobalParserTable::parse(Parser* mainP, CodeTracker* trckr) {
     for (std::pair<std::string, Parser*> const &p : mParsers) {
         if (p.second->mType == PTypes::Unassigned) {
@@ -495,4 +847,72 @@ ParseResult* GlobalParserTable::parse(Parser* mainP, CodeTracker* trckr) {
 void GlobalParserTable::assign(Parser* to, Parser* from) {
     mParsers.erase(from->mName);
     to->assign(from);
+}
+
+GlobalParserTable* GlobalParserTable::getFileParser() {
+    GlobalParserTable* gpt = new GlobalParserTable();
+
+    Parser* dividerP = gpt->String("Divider", "@@"); 
+
+    Parser* termIdentP = gpt->Regex("Terminal Identifier", "[a-z0-9_]+");
+
+    Parser* colonP = gpt->String("Colon", ":");
+
+    Parser* termRegexP = gpt->Regex("Terminal Regex", "#|\\S+|");
+
+    Parser* termP = gpt->Regex("Terminal", "\\S+");
+
+    Parser* ntermIdentP = gpt->Regex("Non-Terminal Identifier", "[A-Z0-9_]+");
+
+    Parser* arrowP = gpt->String("Arrow", "=>");
+
+    Parser* pipeP = gpt->String("Pipe", "|");
+
+    Parser* semicolonP = gpt->String("Semicolon", ";");
+
+    Parser* lparenP = gpt->String("Left Parenthesis", "(");
+
+    Parser* rparenP = gpt->String("Right Parenthesis", ")");
+
+    Parser* termDeclP = gpt->Or(
+                "Terminal Declaration",
+                std::vector<Parser*>{ termRegexP, termP }
+            );
+
+    Parser* termStmtP = gpt->And(
+                "Terminal Statement",
+                std::vector<Parser*>{ termIdentP, colonP, termDeclP }
+            );
+
+    Parser* termBlockP = gpt->Many("Terminal Block", termStmtP);
+
+    Parser* termOrNtermP = gpt->Or(
+                "Terminal or Non Terminal",
+                std::vector<Parser*>{ termIdentP, ntermIdentP }
+            );
+
+    Parser* andChainP = gpt->Many(
+                "And Parsers",
+                termOrNtermP
+            );
+
+    Parser* andDeclP = gpt->And(
+                "AND Parser Declaration",
+                std::vector<Parser*>{ ntermIdentP, lparenP, andChainP, rparenP }
+            );
+
+    Parser* ntermIdentOrAndDeclP = gpt->Or(
+                "Terminal or Non-Terminal or AND Declaration",
+                std::vector<Parser*>{ andDeclP, termOrNtermP }
+            );
+
+    return gpt;
+}
+
+GlobalParserTable* GlobalParserTable::parseFromFile(const std::string& file) {
+    GlobalParserTable* gpt = new GlobalParserTable();
+
+
+
+    return gpt;
 }

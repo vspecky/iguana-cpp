@@ -6,6 +6,18 @@
 #include <map>
 
 namespace Iguana {
+    class IndentTracker {
+    private:
+        int mCurrentMag;
+        int mStepSize;
+
+    public:
+        IndentTracker(int);
+        void increment();
+        void decrement();
+        std::string getIndentStr();
+    };
+
     class Node {
     public:
         std::vector<Node> mNodes;
@@ -14,10 +26,10 @@ namespace Iguana {
         int mLin;
         int mCol;
 
-        Node(int, int, std::string);
+        Node(int, int, const std::string&);
         void setNodes(std::vector<Node>);
         void setValue(std::string);
-        std::string display();
+        void display(IndentTracker*);
     };
 
     class ParseResult {
@@ -43,7 +55,13 @@ namespace Iguana {
         Digit,
         Custom,
         Closure,
+        Until,
         EndOfFile,
+        Regex,
+        Number,
+        Range,
+        MoreThan,
+        LessThan,
     };
 
     class Parser {
@@ -53,6 +71,8 @@ namespace Iguana {
         std::string mName;
         ParseResult* (Parser::*mParseFn)(CodeTracker*);
         PTypes mType;
+        unsigned int mLowerAmt;
+        unsigned int mUpperAmt;
 
         std::string getError(const std::string&, int, int);
         ParseResult* parseString(CodeTracker*);
@@ -66,6 +86,12 @@ namespace Iguana {
         ParseResult* parseDigit(CodeTracker*);
         ParseResult* parseCustom(CodeTracker*);
         ParseResult* parseEOF(CodeTracker*);
+        ParseResult* parseUntil(CodeTracker*);
+        ParseResult* parseRegex(CodeTracker*);
+        ParseResult* parseNumber(CodeTracker*);
+        ParseResult* parseRange(CodeTracker*);
+        ParseResult* parseMoreThan(CodeTracker*);
+        ParseResult* parseLessThan(CodeTracker*);
 
         void assign(Parser*);
 
@@ -80,6 +106,12 @@ namespace Iguana {
         static Parser* Digit(const std::string&);
         static Parser* Custom(const std::string&, const std::string&);
         static Parser* EndOfFile(const std::string&);
+        static Parser* Until(const std::string&, Parser*, Parser*);
+        static Parser* Regex(const std::string&, const std::string&);
+        static Parser* Number(const std::string&, Parser*, unsigned int);
+        static Parser* Range(const std::string&, Parser*, unsigned int, unsigned int);
+        static Parser* MoreThan(const std::string&, Parser*, unsigned int);
+        static Parser* LessThan(const std::string&, Parser*, unsigned int);
 
     public:
         friend class GlobalParserTable;
@@ -88,9 +120,14 @@ namespace Iguana {
     class GlobalParserTable {
     private:
         std::map<std::string, Parser*> mParsers;
+        std::vector<Parser*> mAnonParsers;
+
+        static GlobalParserTable* getFileParser();
 
     public:
         ~GlobalParserTable();
+
+        static GlobalParserTable* parseFromFile(const std::string&);
 
         Parser* String(const std::string&, const std::string&);
         Parser* And(const std::string&, std::vector<Parser*>);
@@ -101,7 +138,13 @@ namespace Iguana {
         Parser* Alphanumeric(const std::string&);
         Parser* Digit(const std::string&);
         Parser* Custom(const std::string&, const std::string&);
+        Parser* Until(const std::string&, Parser*, Parser*);
         Parser* EndOfFile(const std::string&);
+        Parser* Regex(const std::string&, const std::string&);
+        Parser* Number(const std::string&, Parser*, unsigned int);
+        Parser* Range(const std::string&, Parser*, unsigned int, unsigned int);
+        Parser* MoreThan(const std::string&, Parser*, unsigned int);
+        Parser* LessThan(const std::string&, Parser*, unsigned int);
 
         void assign(Parser*, Parser*);
 
