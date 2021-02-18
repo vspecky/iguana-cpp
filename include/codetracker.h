@@ -18,6 +18,8 @@ public:
     void consume(std::string const& toConsume);
     std::string parseKey(int (*)(int));
     std::string parseCustomSymbols(std::string&);
+    std::string parseAnything();
+    std::string parseRegex(const std::string);
     bool isEOF();
     void display();
     void copyInfo(CodeTracker*);

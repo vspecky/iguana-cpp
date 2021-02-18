@@ -1,6 +1,7 @@
 #include "codetracker.h"
 
 #include <string>
+#include <regex>
 #include <iostream>
 
 CodeTracker::CodeTracker(std::string* code) {
@@ -84,6 +85,41 @@ std::string CodeTracker::parseCustomSymbols(std::string& toParse) {
     }
 
     return res;
+}
+
+std::string CodeTracker::parseAnything() {
+    this->skipWhitespace();
+    std::string res = "";
+
+    int len = mCode->length();
+
+    while (mIdx < len && !isspace(mCode->at(mIdx))) {
+        res += mCode->at(mIdx);
+        mIdx++;
+        mCol++;
+    }
+
+    return res;
+}
+
+std::string CodeTracker::parseRegex(const std::string regx) {
+    this->skipWhitespace();
+
+    if (mIdx >= mCode->length())
+        return "";
+
+    std::string toSearch = mCode->substr(mIdx, std::string::npos);
+    
+    std::regex r(regx);
+    std::smatch m;
+
+    if (!std::regex_search(toSearch, m, r))
+        return "";
+
+    if (m.position(0) != 0)
+        return "";
+
+    return m.str(0);
 }
 
 void CodeTracker::display() {
