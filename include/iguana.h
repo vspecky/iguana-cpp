@@ -93,12 +93,12 @@ namespace Iguana {
         ParseResult* parseMoreThan(CodeTracker*);
         ParseResult* parseLessThan(CodeTracker*);
 
-        void assign(Parser*);
+        void assignParserFunction();
 
         Parser();
-        static Parser* String(const std::string&, const std::string&);
-        static Parser* And(std::vector<Parser*>, const std::string&);
-        static Parser* Or(std::vector<Parser*>, const std::string&);
+
+    public:
+        void assign(Parser*);
         static Parser* Many(Parser*, const std::string&);
         static Parser* Closure(Parser*, const std::string&);
         static Parser* Alphabetic(const std::string&);
@@ -107,13 +107,15 @@ namespace Iguana {
         static Parser* Custom(const std::string&, const std::string&);
         static Parser* EndOfFile(const std::string&);
         static Parser* Until(const std::string&, Parser*, Parser*);
-        static Parser* Regex(const std::string&, const std::string&);
         static Parser* Number(const std::string&, Parser*, unsigned int);
         static Parser* Range(const std::string&, Parser*, unsigned int, unsigned int);
         static Parser* MoreThan(const std::string&, Parser*, unsigned int);
         static Parser* LessThan(const std::string&, Parser*, unsigned int);
-
-    public:
+        static Parser* Empty();
+        static Parser* String(const std::string&, const std::string&);
+        static Parser* And(std::vector<Parser*>, const std::string&);
+        static Parser* Or(std::vector<Parser*>, const std::string&);
+        static Parser* Regex(const std::string&, const std::string&);
         friend class GlobalParserTable;
     };
 
@@ -145,9 +147,15 @@ namespace Iguana {
         Parser* Range(const std::string&, Parser*, unsigned int, unsigned int);
         Parser* MoreThan(const std::string&, Parser*, unsigned int);
         Parser* LessThan(const std::string&, Parser*, unsigned int);
+        Parser* Empty(const std::string&);
 
         void assign(Parser*, Parser*);
 
         ParseResult* parse(Parser*, CodeTracker*);
+        ParseResult* parseRoot(CodeTracker*);
+    };
+
+    class ParserConstructor {
+
     };
 }

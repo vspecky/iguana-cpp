@@ -42,7 +42,9 @@ void CodeTracker::skipWhitespace() {
 bool CodeTracker::matchString(std::string const& toMatch) {
     this->skipWhitespace();
 
-    return mCode->substr(mIdx, toMatch.length()) == toMatch;
+    std::string match = mCode->substr(mIdx, toMatch.length());
+
+    return  match == toMatch;
 }
 
 void CodeTracker::consume(std::string const& toConsume) {
@@ -109,7 +111,7 @@ std::string CodeTracker::parseRegex(const std::string regx) {
         return "";
 
     std::string toSearch = mCode->substr(mIdx, std::string::npos);
-    
+
     std::regex r(regx);
     std::smatch m;
 
@@ -119,7 +121,11 @@ std::string CodeTracker::parseRegex(const std::string regx) {
     if (m.position(0) != 0)
         return "";
 
-    return m.str(0);
+    std::string res = m.str(0);
+
+    this->consume(res);
+
+    return res;
 }
 
 void CodeTracker::display() {

@@ -1,10 +1,10 @@
-#include "iguana.h"
 #include <string>
 #include <vector>
 #include <iostream>
 #include <sstream>
 #include <map>
 #include "codetracker.h"
+#include "iguana.h"
 
 using namespace Iguana;
 
@@ -94,6 +94,9 @@ void ParseResult::displayResult() {
         return;
     }
 
+    IndentTracker trckr(3); 
+
+    this->mNode->display(&trckr);
 }
 
 Parser::Parser()
@@ -115,6 +118,7 @@ ParseResult* Parser::parse(CodeTracker* trckr) {
 
 ParseResult* Parser::parseString(CodeTracker* trckr) {
     ParseResult* res = new ParseResult();
+    trckr->skipWhitespace();
     
     int lin = trckr->mLin;
     int col = trckr->mCol;
@@ -720,6 +724,11 @@ Parser* Parser::LessThan(const std::string& name, Parser* toParse, unsigned int 
     return p;
 }
 
+Parser* Parser::Empty() {
+    Parser* p = new Parser();
+    return p;
+}
+
 void Parser::assign(Parser* other) {
     if (mType != PTypes::Unassigned)
         return;
@@ -727,11 +736,21 @@ void Parser::assign(Parser* other) {
     mParsers = other->mParsers;
     mToParse = other->mToParse;
     mName = other->mName;
-    mParseFn = other->mParseFn;
     mType = other->mType;
-    delete other;
+    mParseFn = other->mParseFn;
 }
 
+void Parser::assignParserFunction() {
+    switch(mType) {
+        case PTypes::And:
+            mParseFn = &Parser::parseAnd;
+            break;
+
+        default:
+            mParseFn = &Parser::parseUntil;
+            break;
+    }
+}
 
 
 GlobalParserTable::~GlobalParserTable() {
@@ -833,6 +852,12 @@ Parser* GlobalParserTable::LessThan(const std::string& name, Parser* toP, unsign
     return p;
 }
 
+Parser* GlobalParserTable::Empty(const std::string& name) {
+    Parser* p = Parser::Empty();
+    mParsers.insert(std::pair<std::string, Parser*>(name, p));
+    return p;
+}
+
 ParseResult* GlobalParserTable::parse(Parser* mainP, CodeTracker* trckr) {
     for (std::pair<std::string, Parser*> const &p : mParsers) {
         if (p.second->mType == PTypes::Unassigned) {
@@ -844,8 +869,12 @@ ParseResult* GlobalParserTable::parse(Parser* mainP, CodeTracker* trckr) {
     return mainP->parse(trckr);
 }
 
+ParseResult* GlobalParserTable::parseRoot(CodeTracker* trckr) {
+    Parser* root = mParsers["ROOT"];
+    return root->parse(trckr);
+}
+
 void GlobalParserTable::assign(Parser* to, Parser* from) {
-    mParsers.erase(from->mName);
     to->assign(from);
 }
 
