@@ -142,15 +142,24 @@ ParseResult* Parser::parseAnd(CodeTracker* trckr) {
     int col = trckr->mCol;
 
     std::vector<Node> nodes;
+    int idx = 0;
     for (Parser* p : mParsers) {
         int startLin = trckr->mLin;
         int startCol = trckr->mCol;
         ParseResult* pres = (p->*p->mParseFn)(trckr);
+        
         if (pres->mError) {
             return res->failure(this->getError(p->mName, startLin, startCol));
         }
-        nodes.push_back(*pres->mNode);
+
+        if (toInclude[idx]) {
+            nodes.push_back(*pres->mNode);
+        } else {
+            delete pres->mNode;
+        }
+
         delete pres;
+        ++idx;
     }
 
     std::string nodeName = mName;
@@ -206,8 +215,14 @@ ParseResult* Parser::parseOr(CodeTracker* trckr) {
     }
 
     std::string nodeName = mName;
-    Node* resNode = new Node(lin, col, nodeName);
-    resNode->setNodes(std::vector<Node>{ *node });
+    Node* resNode;
+    if (node->mName != "") {
+        resNode = new Node(lin, col, nodeName);
+        resNode->setNodes(std::vector<Node>{ *node });
+    } else {
+        node->mName = nodeName;
+        resNode = node;
+    }
 
     return res->success(resNode);
 }
@@ -593,6 +608,25 @@ Parser* Parser::And(std::vector<Parser*> toParse, const std::string& name) {
     p->mName = name;
     p->mType = PTypes::And;
     p->mParseFn = &Parser::parseAnd;
+    p->toInclude = std::vector<bool>(toParse.size(), true);
+    return p;
+}
+
+Parser* Parser::And(
+        std::vector<Parser*> toParse,
+        const std::string& name,
+        std::vector<bool> include)
+{
+    Parser* p = new Parser();
+    p->mParsers = toParse;
+    p->mName = name;
+    p->mType = PTypes::And;
+    p->mParseFn = &Parser::parseAnd;
+    if (toParse.size() == include.size()) {
+        p->toInclude = include;
+    } else {
+        throw "Unmatched sizes";
+    }
     return p;
 }
 
@@ -602,6 +636,7 @@ Parser* Parser::Or(std::vector<Parser*> toParse, const std::string& name) {
     p->mName = name;
     p->mType = PTypes::Or;
     p->mParseFn = &Parser::parseOr;
+    p->toInclude = std::vector<bool>(toParse.size(), true);
     return p;
 }
 
@@ -756,6 +791,9 @@ void Parser::assignParserFunction() {
 GlobalParserTable::~GlobalParserTable() {
     for (std::pair<std::string, Parser*> const &p : mParsers)
         delete p.second;
+
+    for (Parser* p : mAnonParsers)
+        delete p;
 }
 
 Parser* GlobalParserTable::String(const std::string& name, const std::string& toParse) {
@@ -874,68 +912,12 @@ ParseResult* GlobalParserTable::parseRoot(CodeTracker* trckr) {
     return root->parse(trckr);
 }
 
-void GlobalParserTable::assign(Parser* to, Parser* from) {
-    to->assign(from);
+void GlobalParserTable::addAnonParser(Parser* p) {
+    mAnonParsers.push_back(p);
 }
 
-GlobalParserTable* GlobalParserTable::getFileParser() {
-    GlobalParserTable* gpt = new GlobalParserTable();
-
-    Parser* dividerP = gpt->String("Divider", "@@"); 
-
-    Parser* termIdentP = gpt->Regex("Terminal Identifier", "[a-z0-9_]+");
-
-    Parser* colonP = gpt->String("Colon", ":");
-
-    Parser* termRegexP = gpt->Regex("Terminal Regex", "#|\\S+|");
-
-    Parser* termP = gpt->Regex("Terminal", "\\S+");
-
-    Parser* ntermIdentP = gpt->Regex("Non-Terminal Identifier", "[A-Z0-9_]+");
-
-    Parser* arrowP = gpt->String("Arrow", "=>");
-
-    Parser* pipeP = gpt->String("Pipe", "|");
-
-    Parser* semicolonP = gpt->String("Semicolon", ";");
-
-    Parser* lparenP = gpt->String("Left Parenthesis", "(");
-
-    Parser* rparenP = gpt->String("Right Parenthesis", ")");
-
-    Parser* termDeclP = gpt->Or(
-                "Terminal Declaration",
-                std::vector<Parser*>{ termRegexP, termP }
-            );
-
-    Parser* termStmtP = gpt->And(
-                "Terminal Statement",
-                std::vector<Parser*>{ termIdentP, colonP, termDeclP }
-            );
-
-    Parser* termBlockP = gpt->Many("Terminal Block", termStmtP);
-
-    Parser* termOrNtermP = gpt->Or(
-                "Terminal or Non Terminal",
-                std::vector<Parser*>{ termIdentP, ntermIdentP }
-            );
-
-    Parser* andChainP = gpt->Many(
-                "And Parsers",
-                termOrNtermP
-            );
-
-    Parser* andDeclP = gpt->And(
-                "AND Parser Declaration",
-                std::vector<Parser*>{ ntermIdentP, lparenP, andChainP, rparenP }
-            );
-
-    Parser* ntermIdentOrAndDeclP = gpt->Or(
-                "Terminal or Non-Terminal or AND Declaration",
-                std::vector<Parser*>{ andDeclP, termOrNtermP }
-            );
-
-    return gpt;
+void GlobalParserTable::assign(Parser* to, Parser* from) {
+    to->assign(from);
 }
 
 GlobalParserTable* GlobalParserTable::parseFromFile(const std::string& file) {

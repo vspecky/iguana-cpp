@@ -7,8 +7,9 @@
 
 using IC = IguanaConstructor;
 
-IC::Token::Token(const std::string& value, const std::string& type)
-    : type(type), value(value)
+IC::Token::Token(const std::string& value, const std::string& type, int lin, int col)
+    : type(type), value(value),
+      lin(lin), col(col)
 {}
 
 IC::Lexer::Lexer(std::string inp) 
@@ -31,6 +32,11 @@ IC::ParseResult::ParseResult(const std::string error)
     mIsError = true;
 }
 
+IC::Parser::~Parser() {
+    for (Token* t : mLexemes)
+        delete t;
+}
+
 char IC::Lexer::current() {
     if (mPtr < mInput.length()) {
         return mInput[mPtr];
@@ -51,8 +57,18 @@ char IC::Lexer::consumeNext() {
 }
 
 void IC::Lexer::skipWhitespace() {
-    while (std::isspace(current()))
+    char curr = current();
+    while (std::isspace(curr)) {
         consume();
+        if (curr == '\n') {
+            ++mLin;
+            mCol = 1;
+        } else {
+            ++mCol;
+        }
+
+        curr = current();
+    }
 }
 
 bool IC::Lexer::eof() {
@@ -75,20 +91,22 @@ std::string IC::Lexer::parseTill(bool (*filter)(char)) {
 IC::Token* IC::Lexer::getToken() {
     skipWhitespace();
 
+    int lin = mLin;
+    int col = mCol;
     std::string val = parseTill([](char ch) -> bool {
             return std::isalpha(ch) || ch == '_';
         });
 
     char curr = current();
     if (std::isspace(curr) || curr == '\0') {
-        return new Token(val, "IDENT");
+        return new Token(val, "IDENT", lin, col);
     }
 
     val += parseTill([](char ch) -> bool {
             return !std::isspace(ch) && ch != '\0';
         });
 
-    return new Token(val, "STR");
+    return new Token(val, "STR", lin, col);
 }
 
 std::vector<IC::Token*> IC::Lexer::lexInput() {
@@ -133,7 +151,13 @@ void IC::Parser::skip(const std::string val) {
     }
 
     mError = true;
-    mErrorMsg = "Expected " + val + "\n";
+    mErrorMsg = "Expected "
+        + val
+        + " ("
+        + std::to_string(curr->lin)
+        + ":"
+        + std::to_string(curr->col)
+        + ")";
 }
 
 void IC::Parser::parseAllAtoms(std::vector<ParseNode>& nodes) {
@@ -151,14 +175,19 @@ void IC::Parser::parseAllAtoms(std::vector<ParseNode>& nodes) {
         }
 
         ParseNode n(ident->value, "ATOM");
-        n.mValues.push_back(val->value);
+        n.mVal = val->value;
         atoms.push_back(n);
         ident = current();
     }
 
     if (atoms.size() == 0) {
         mError = true;
-        mErrorMsg = "No atoms specified";
+        mErrorMsg = "No atoms specified ("
+            + std::to_string(ident->lin)
+            + ":"
+            + std::to_string(ident->col)
+            + ")";
+
         return;
     }
 
@@ -172,48 +201,57 @@ void IC::Parser::parseAllGrammars(std::vector<ParseNode>& nodes) {
 
     while (ident != nullptr && ident->type == "IDENT") {
         consume();
-        std::vector<std::string> opers;
+        std::vector<std::vector<std::string>> opers;
+        std::vector<std::vector<bool>> toIncludes;
         Token* op = current();
         std::string type = "";
 
-        if (op == nullptr && op->value != "&" && op->value != "|") {
+        if (op == nullptr && op->value != "|") {
             mError = true;
-            mErrorMsg = "Expected '&' or '|'";
+            mErrorMsg = "Expected '|' ("
+                + std::to_string(op->lin)
+                + ":"
+                + std::to_string(op->col)
+                + ")";
+
             return;
         }
 
-        if (op->value == "|") {
-            type = "Or";
-            while (op != nullptr && op->value == "|") {
-                consume();
-                Token* oper = consume();
+        while (op != nullptr && op->value == "|") {
+            consume();
+            std::vector<std::string> children;
+            std::vector<bool> includes;
+            Token* oper = current();
 
-                if (oper->type != "IDENT") {
-                    mError = true;
-                    mErrorMsg = "Expected identifier";
-                    return;
+            if (oper->type != "IDENT" && oper->value.back() != '!') {
+                mError = true;
+                mErrorMsg = "Expected identifier ("
+                    + std::to_string(oper->lin)
+                    + ":"
+                    + std::to_string(oper->col)
+                    + ")";
+
+                return;
+            }
+
+            while (oper != nullptr && (oper->type == "IDENT" || oper->value.back() == '!')) {
+                consume();
+
+                if (oper->value.back() == '!') {
+                    includes.push_back(false);
+                    children.push_back(oper->value.substr(0, oper->value.length() - 1));
+                } else {
+                    includes.push_back(true);
+                    children.push_back(oper->value);
                 }
 
-                opers.push_back(oper->value);
-
-                op = current();
+                oper = current();
             }
-        } else {
-            type = "And";
-            while (op != nullptr && op->value == "&") {
-                consume();
-                Token* oper = consume();
 
-                if (oper->type != "IDENT") {
-                    mError = true;
-                    mErrorMsg = "Expected identifier";
-                    return;
-                }
+            opers.push_back(children);
+            toIncludes.push_back(includes);
 
-                opers.push_back(oper->value);
-
-                op = current();
-            }
+            op = current();
         }
 
         skip(";");
@@ -222,6 +260,7 @@ void IC::Parser::parseAllGrammars(std::vector<ParseNode>& nodes) {
 
         ParseNode n(ident->value, type);
         n.mValues = opers;
+        n.mInclude = toIncludes;
         nodes.push_back(n);
         ident = current();
     }
@@ -332,7 +371,7 @@ IC::ConstructResult IC::construct(std::string input) {
         if (parsers.count(n.mName)) {
             ConstructResult cres;
             cres.mIsError = true;
-            cres.mErrorMsg = "Duplicate parsers";
+            cres.mErrorMsg = "Duplicate parsers '" + n.mName + "'";
             delete gpt;
             return cres;
         }
@@ -345,7 +384,7 @@ IC::ConstructResult IC::construct(std::string input) {
         Iguana::Parser* p = parsers[n.mName];
 
         if (n.mType == "ATOM") {
-            std::string val = n.mValues[0];
+            std::string val = n.mVal;
             
             Iguana::Parser* interm;
             if (val.length() > 2 && val.substr(0, 2) == "#|" && val.back() == '|') {
@@ -361,24 +400,43 @@ IC::ConstructResult IC::construct(std::string input) {
         }
 
         std::vector<Iguana::Parser*> children;
-        for (std::string& name : n.mValues) {
-            if (parsers.count(name) == 0) {
-                ConstructResult cres;
-                cres.mIsError = true;
-                cres.mErrorMsg = "Parser " + name + " not found";
-                delete gpt;
-                return cres;
+        int idx = 0;
+        for (std::vector<std::string>& branch : n.mValues) {
+            if (branch.size() == 1) {
+                std::string pName = branch[0];
+                if (parsers.count(pName) == 0) {
+                    ConstructResult cres;
+                    cres.mIsError = true;
+                    cres.mErrorMsg = "Parser " + pName + " not found";
+                    delete gpt;
+                    return cres;
+                }
+
+                children.push_back(parsers[pName]);
+                continue;
             }
 
-            children.push_back(parsers[name]);
+            std::vector<Iguana::Parser*> andChildren;
+
+            for (std::string& name : branch) {
+                if (parsers.count(name) == 0) {
+                    ConstructResult cres;
+                    cres.mIsError = true;
+                    cres.mErrorMsg = "Parser " + name + " not found";
+                    delete gpt;
+                    return cres;
+                }
+
+                andChildren.push_back(parsers[name]);
+            }
+
+            Iguana::Parser* chP = Iguana::Parser::And(andChildren, "", n.mInclude[idx]); 
+            ++idx;
+            children.push_back(chP);
+            gpt->addAnonParser(chP);
         }
 
-        Iguana::Parser* interm;
-        if (n.mType == "And") {
-            interm = Iguana::Parser::And(children, n.mName);
-        } else if (n.mType == "Or") {
-            interm = Iguana::Parser::Or(children, n.mName);
-        }
+        Iguana::Parser* interm = Iguana::Parser::Or(children, n.mName);
 
         p->assign(interm);
         delete interm;

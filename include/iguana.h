@@ -69,6 +69,7 @@ namespace Iguana {
         std::vector<Parser*> mParsers;
         std::string mToParse;
         std::string mName;
+        std::vector<bool> toInclude;
         ParseResult* (Parser::*mParseFn)(CodeTracker*);
         PTypes mType;
         unsigned int mLowerAmt;
@@ -114,6 +115,7 @@ namespace Iguana {
         static Parser* Empty();
         static Parser* String(const std::string&, const std::string&);
         static Parser* And(std::vector<Parser*>, const std::string&);
+        static Parser* And(std::vector<Parser*>, const std::string&, std::vector<bool>);
         static Parser* Or(std::vector<Parser*>, const std::string&);
         static Parser* Regex(const std::string&, const std::string&);
         friend class GlobalParserTable;
@@ -148,6 +150,8 @@ namespace Iguana {
         Parser* MoreThan(const std::string&, Parser*, unsigned int);
         Parser* LessThan(const std::string&, Parser*, unsigned int);
         Parser* Empty(const std::string&);
+
+        void addAnonParser(Parser*);
 
         void assign(Parser*, Parser*);
 

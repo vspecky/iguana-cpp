@@ -12,14 +12,18 @@ private:
     struct Token {
         std::string type;
         std::string value;
+        int lin;
+        int col;
         
-        Token(const std::string&, const std::string&);
+        Token(const std::string&, const std::string&, int, int);
     };
 
     class Lexer {
     private:
         std::string mInput;
         int mPtr = 0;
+        int mLin = 1;
+        int mCol = 1;
 
         char current();
         char consume();
@@ -38,16 +42,15 @@ private:
     struct ParseNode {
         std::string mName;
         std::string mType;
-        std::vector<std::string> mValues;
+        std::vector<std::vector<std::string>> mValues;
+        std::vector<std::vector<bool>> mInclude;
+        std::string mVal;
 
         ParseNode(const std::string, const std::string);
 
         void display() {
             std::printf("%s %s: ", mName.c_str(), mType.c_str());
 
-            for (std::string& s : mValues) {
-                std::printf("%s ", s.c_str());
-            }
 
             std::printf("\n");
         }
@@ -75,6 +78,7 @@ private:
         void parseAllGrammars(std::vector<ParseNode>&);
     
     public:
+        ~Parser();
         std::vector<Token*> mLexemes;
         ParseResult parse();
     };
